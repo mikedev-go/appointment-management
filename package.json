@@ -1,0 +1,21 @@
+{
+    "name": "appointment-management",
+    "version": "1.0.0",
+    "private": true,
+    "workspaces": [
+        "packages/*"
+    ],
+    "scripts": {
+        "build": "yarn workspaces run build",
+        "deploy:appointment": "cd packages/appointment && npm run deploy",
+        "deploy:appointment-store": "cd packages/appointment-store && npm run deploy"
+    },
+    "devDependencies": {
+        "typescript": "^4.0.0"
+    },
+    "dependencies": {
+        "inversify": "^7.1.0",
+        "middy": "^0.24.0",
+        "reflect-metadata": "^0.2.2"
+    }
+}

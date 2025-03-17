@@ -1,0 +1,119 @@
+service: appointment
+
+frameworkVersion: "4.9"
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  stage: dev
+  region: us-east-1
+  environment:
+    APPOINTMENTS_SNS_TOPIC: arn:aws:sns:us-east-1:841162699497:AppointmentSNSTopic
+
+functions:
+  app:
+    handler: dist/src/adapters/lambdas/create-appointment-handler.app
+    events:
+      - http:
+          path: appointment
+          method: post
+    role:
+      Fn::GetAtt: [LambdaExecutionRole, Arn]          
+
+build:
+  esbuild:
+    configFile: ./esbuild.config.js 
+
+resources:
+  Resources:
+    AppointmentsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: Appointments
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: scheduleId
+            AttributeType: N
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+          - AttributeName: scheduleId
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST           
+
+    LambdaExecutionRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: appointment-dev-app
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: DynamoDBAccess
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - dynamodb:PutItem
+                    - dynamodb:GetItem
+                    - dynamodb:UpdateItem
+                    - dynamodb:DeleteItem
+                  Resource: arn:aws:dynamodb:us-east-1:841162699497:table/Appointments
+          - PolicyName: SNSPublishPolicy
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - SNS:Publish
+                  Resource: arn:aws:sns:us-east-1:841162699497:AppointmentSNSTopic
+
+    AppointmentSNSTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: AppointmentSNSTopic
+
+    AppointmentSQSQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: AppointmentSQSQueue
+
+    AppointmentSQSQueuePolicy:
+      Type: AWS::SQS::QueuePolicy
+      Properties:
+        Queues:
+          - Ref: AppointmentSQSQueue
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Sid: "Allow-SNS-SendMessage"
+              Effect: Allow
+              Principal: "*"
+              Action: "SQS:SendMessage"
+              Resource:
+                Fn::GetAtt: [AppointmentSQSQueue, Arn]
+              Condition:
+                ArnEquals:
+                  aws:SourceArn: 
+                    Ref: AppointmentSNSTopic
+
+    AppointmentTopicSubscription:
+      Type: AWS::SNS::Subscription
+      Properties:
+        Protocol: sqs
+        TopicArn:
+          Ref: AppointmentSNSTopic
+        Endpoint:
+          Fn::GetAtt: [AppointmentSQSQueue, Arn]
+
+package:
+  individually: true
+  include:
+    - dist/**
+    - package.json
